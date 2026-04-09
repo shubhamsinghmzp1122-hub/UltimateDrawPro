@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ultimate Draw Pro - UI Update</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="icon-512.png">
+
     <style>
         :root { 
             --bg-dark: #0f172a;
@@ -610,6 +615,10 @@
                 <button id="lobby-gallery-btn" class="lobby-btn">
                     <span>🖼️</span> Open Gallery
                 </button>
+                
+                <button id="downloadAppBtn" class="lobby-btn" style="background: linear-gradient(90deg, #ff8c00, #ff0080) !important; border-color: #fff !important; display: none;">
+                    📲 INSTALL VIP APP
+                </button>
             </div>
         </div>
     </div>
@@ -714,6 +723,21 @@
             <div class="confirm-actions">
                 <button id="cancelGalleryDelete" class="btn-confirm-action btn-cancel">Cancel</button>
                 <button id="confirmGalleryDelete" class="btn-confirm-action btn-danger">Yes, Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="installModal" class="modal-overlay" style="z-index: 3000;">
+        <div class="confirm-box" style="border-color: #ff8c00; box-shadow: 0 0 20px rgba(255,140,0,0.5);">
+            <h3 style="color: #ffcc00; text-shadow: 0 0 10px rgba(255,204,0,0.5);">INSTALL APP</h3>
+            <p style="color: #fff; margin: 15px 0 25px; font-size: 14px; text-align: left; line-height: 1.6;">
+                To install this app 100% Ad-Free:<br><br>
+                1. Click the <b>3-dots menu (⋮)</b> in Chrome (top-right).<br>
+                2. Select <b>"Add to Home screen"</b> or <b>"Install app"</b>.<br>
+                3. Enjoy the VIP Ad-Free experience! 😎
+            </p>
+            <div class="confirm-actions">
+                <button onclick="document.getElementById('installModal').style.display='none';" class="btn-confirm-action btn-warning">GOT IT!</button>
             </div>
         </div>
     </div>
@@ -1419,6 +1443,39 @@
     }
 
     window.onload = init;
+
+    // ⭐ NEW PWA DOWNLOAD LOGIC WITH SW REGISTRATION ⭐
+    let deferredPrompt;
+    const downloadAppBtn = document.getElementById('downloadAppBtn');
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+          console.log('Service Worker Registered!', reg);
+        }).catch(err => console.log('SW Fail', err));
+      });
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        downloadAppBtn.style.display = 'flex'; // Button sirf tab dikhega jab browser install allow karega
+    });
+
+    downloadAppBtn.addEventListener('click', async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                console.log('VIP PWA Installed!');
+                downloadAppBtn.style.display = 'none';
+            }
+            deferredPrompt = null;
+        } else {
+            document.getElementById('installModal').style.display = 'flex';
+        }
+    });
+
 </script>
 </body>
 </html>
