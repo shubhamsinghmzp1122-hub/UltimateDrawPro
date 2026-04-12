@@ -1296,7 +1296,15 @@
         tCtx.fillStyle = "#ffffff";
         tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         tCtx.drawImage(canvas, 0, 0);
-        const data = tempCanvas.toDataURL();
+        const data = tempCanvas.toDataURL("image/png");
+
+        // ⭐ NAYA CODE: SAVE TO DEVICE GALLERY ⭐
+        const link = document.createElement('a');
+        link.href = data;
+        link.download = 'Ultimate_Draw_Pro_' + Date.now() + '.png';
+        link.click();
+        // ⭐ NAYA CODE KHATAM ⭐
+
         let list = JSON.parse(localStorage.getItem('pro_draw_vfinal_bucket') || '[]');
         list.unshift({id: Date.now(), img: data});
         localStorage.setItem('pro_draw_vfinal_bucket', JSON.stringify(list.slice(0, 20)));
