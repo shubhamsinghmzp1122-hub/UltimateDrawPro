@@ -1288,7 +1288,7 @@
 
     document.getElementById('delSelBtn').onclick = performDelete;
 
-    document.getElementById('saveBtn').onclick = () => {
+    document.getElementById('saveBtn').onclick = async () => {
         const tempCanvas = document.createElement('canvas');
         tempCanvas.width = canvas.width;
         tempCanvas.height = canvas.height;
@@ -1296,17 +1296,32 @@
         tCtx.fillStyle = "#ffffff";
         tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
         tCtx.drawImage(canvas, 0, 0);
-        const data = tempCanvas.toDataURL("image/png");
 
-        // ⭐ NAYA CODE: SAVE TO DEVICE GALLERY ⭐
-        const link = document.createElement('a');
-        link.href = data;
-        link.download = 'Ultimate_Draw_Pro_' + Date.now() + '.png';
-        link.click();
-        // ⭐ NAYA CODE KHATAM ⭐
+        const dataUrl = tempCanvas.toDataURL("image/png");
+
+        // ⭐ PWA APP KE LIYE NAYA NATIVE SAVE LOGIC ⭐
+        try {
+            const blob = await (await fetch(dataUrl)).blob();
+            const file = new File([blob], 'Ultimate_Draw_Pro_' + Date.now() + '.png', { type: 'image/png' });
+
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: 'My Artwork',
+                });
+            } else {
+                const link = document.createElement('a');
+                link.href = dataUrl;
+                link.download = file.name;
+                link.click();
+            }
+        } catch (error) {
+            console.log("Save/Share cancelled or failed: ", error);
+        }
+        // ⭐ NAYA LOGIC KHATAM ⭐
 
         let list = JSON.parse(localStorage.getItem('pro_draw_vfinal_bucket') || '[]');
-        list.unshift({id: Date.now(), img: data});
+        list.unshift({id: Date.now(), img: dataUrl});
         localStorage.setItem('pro_draw_vfinal_bucket', JSON.stringify(list.slice(0, 20)));
         
         saveSuccessModal.style.display = 'flex';
