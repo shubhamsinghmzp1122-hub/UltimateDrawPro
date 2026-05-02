@@ -799,6 +799,7 @@
     let drawing = false;
     let startX, startY;
     let snapshot;
+    let cleanSnapshot = null; // BUG FIX: Store clean canvas without selection box
     let history = [];
     let redoStack = []; 
     let currentMode = 'brush';
@@ -879,18 +880,16 @@
     };
 
     /* ===========================
-       SMART RESIZE (BUG FIX: Prevent Scroll Clear)
+       SMART RESIZE (Prevent Scroll Clear)
        =========================== */
     let resizeTimer;
     function resizeCanvas(isInit = false) {
-        // Debounce resize to prevent continuous calls during scroll
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
             const view = document.getElementById('main-view');
             const w = Math.max(50, view.clientWidth - 40); 
             const h = Math.max(50, view.clientHeight - 40);
             
-            // Backup exact pixels before changing canvas size
             let backupCanvas = null;
             if (!isInit) {
                 backupCanvas = document.createElement('canvas');
@@ -983,7 +982,7 @@
     }
 
     /* ===========================
-       SMART FLOOD FILL (BUG FIX: Halo Effect Tolerance)
+       SMART FLOOD FILL 
        =========================== */
     function floodFill(startX, startY, fillColor) {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -999,7 +998,7 @@
 
         if (startR === fillR && startG === fillG && startB === fillB) return;
 
-        const tolerance = 40; // Allow filling of anti-aliased edges
+        const tolerance = 40; 
         const stack = [[startX, startY]];
         
         while (stack.length > 0) {
@@ -1084,6 +1083,9 @@
                 
                 isMovingSelection = true;
                 if (!selectionImage) {
+                    // BUG FIX: Restore clean canvas before extracting so dotted line is not saved
+                    if (cleanSnapshot) ctx.putImageData(cleanSnapshot, 0, 0);
+
                     const tempCanvas = document.createElement('canvas');
                     const sw = Math.abs(selectionRect.w); const sh = Math.abs(selectionRect.h);
                     const sx = selectionRect.w < 0 ? selectionRect.x + selectionRect.w : selectionRect.x;
@@ -1094,7 +1096,7 @@
                     selectionImage = tempCanvas;
                     
                     ctx.save(); ctx.fillStyle = "#ffffff"; ctx.fillRect(sx, sy, sw, sh); ctx.restore();
-                    snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height); // Background hole
                     selectionRect = { x: sx, y: sy, w: sw, h: sh };
                 }
                 
@@ -1103,10 +1105,14 @@
                     startSelectionRect = { ...selectionRect };
                 }
             } else {
+                // BUG FIX: Clean up old selection box if making a new selection
+                if (cleanSnapshot) ctx.putImageData(cleanSnapshot, 0, 0);
+
                 isSelecting = true;
                 selectionRect = { x: pos.x, y: pos.y, w: 0, h: 0 };
                 selectionImage = null;
                 snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                cleanSnapshot = snapshot; // Save completely clean canvas
             }
             drawing = true;
             return;
@@ -1145,7 +1151,6 @@
                 ctx.strokeRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h); ctx.restore();
             } else if (isMovingSelection && selectionImage) {
                 if (e.touches && e.touches.length === 2) {
-                    // BUG FIX: Accurate center-based pinch zoom
                     const currentDist = getDistance(e.touches[0], e.touches[1]);
                     if (startPinchDist > 0) {
                         const ratio = currentDist / startPinchDist;
@@ -1197,13 +1202,24 @@
                     isMovingSelection = false;
                     ctx.putImageData(snapshot, 0, 0);
                     ctx.drawImage(selectionImage, selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
-                    selectionImage = null; selectionRect = null; startPinchDist = 0;
+                    selectionImage = null; 
+                    selectionRect = null; 
+                    cleanSnapshot = null; // BUG FIX: Reset clear snapshot
+                    startPinchDist = 0;
                     saveState();
                 } else if (isSelecting) {
                     isSelecting = false;
                     if(selectionRect.w < 0) { selectionRect.x += selectionRect.w; selectionRect.w = Math.abs(selectionRect.w); }
                     if(selectionRect.h < 0) { selectionRect.y += selectionRect.h; selectionRect.h = Math.abs(selectionRect.h); }
-                    if(Math.abs(selectionRect.w) > 5) document.getElementById('delSelBtn').style.display = 'block';
+                    
+                    if(Math.abs(selectionRect.w) > 5 && Math.abs(selectionRect.h) > 5) {
+                        document.getElementById('delSelBtn').style.display = 'block';
+                    } else {
+                        // BUG FIX: Agar galti se chota select ho jaye, tab dotted line hata do
+                        if (cleanSnapshot) ctx.putImageData(cleanSnapshot, 0, 0);
+                        selectionRect = null;
+                        cleanSnapshot = null;
+                    }
                 }
             } else {
                 saveState();
@@ -1213,10 +1229,9 @@
     }
 
     /* ===========================
-       MEMORY OPTIMIZATION (BUG FIX: Undo/Redo Bloat)
+       MEMORY OPTIMIZATION
        =========================== */
     function saveState() {
-        // Reduced max history to 10 to save RAM on low end devices
         if(history.length > 10) history.shift();
         history.push(canvas.toDataURL());
         redoStack = []; 
@@ -1238,6 +1253,8 @@
         if(history.length <= 1) return;
         redoStack.push(history.pop()); 
         redrawWithState(history[history.length-1]);
+        selectionRect = null; selectionImage = null; cleanSnapshot = null;
+        document.getElementById('delSelBtn').style.display = 'none';
     };
 
     document.getElementById('redoBtn').onclick = () => {
@@ -1245,6 +1262,8 @@
         const state = redoStack.pop();
         history.push(state);
         redrawWithState(state);
+        selectionRect = null; selectionImage = null; cleanSnapshot = null;
+        document.getElementById('delSelBtn').style.display = 'none';
     };
 
     document.getElementById('showGrid').onchange = (e) => {
@@ -1260,11 +1279,18 @@
 
     function performDelete() {
         if (currentMode === 'select' && selectionRect) {
+            // BUG FIX: Restore clean canvas before deleting so dotted line is gone
+            if (cleanSnapshot) ctx.putImageData(cleanSnapshot, 0, 0);
+            
             ctx.fillStyle = "#ffffff";
             ctx.fillRect(selectionRect.x, selectionRect.y, selectionRect.w, selectionRect.h);
+            
             selectionRect = null;
+            selectionImage = null;
+            cleanSnapshot = null;
             document.getElementById('delSelBtn').style.display = 'none';
             saveState();
+            redrawWithState(history[history.length-1]);
         }
     }
     document.getElementById('delSelBtn').onclick = performDelete;
@@ -1293,7 +1319,6 @@
             }
         } catch (error) { console.log("Save/Share cancelled or failed: ", error); }
 
-        // Use IndexedDB instead of localStorage
         await saveToDB({ id: Date.now(), img: dataUrl });
         saveSuccessModal.style.display = 'flex';
     };
@@ -1398,6 +1423,8 @@
         document.getElementById('delSelBtn').style.display = 'none';
         document.getElementById('shapeMenuBtn').disabled = (currentMode === 'bucket' || currentMode === 'select');
         selectionRect = null;
+        selectionImage = null;
+        cleanSnapshot = null; // Reset selection logic when switching tools
         if(history.length > 0) redrawWithState(history[history.length-1]);
     }
 
